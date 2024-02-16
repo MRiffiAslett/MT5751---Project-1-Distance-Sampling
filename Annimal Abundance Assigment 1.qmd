@@ -1,0 +1,634 @@
+---
+title: "Analysis_AA"
+format: html
+editor: visual
+---
+
+```{r}
+library(Distance)
+library(statsecol)
+library(tidyverse)
+data('bowhead_LT')
+library(ggplot2)
+```
+
+# **Exploratory Data Analysis**
+
+```{r}
+# Extend the range of breaks slightly beyond the maximum value to ensure that we see all of the values
+# Use the smallest bin Width possible so that we can see the data as clearly as possible
+max_distance <- max(bowhead_LT$distance, na.rm = TRUE)
+breaks_seq <- seq(0, max_distance + 0.1, by = 0.08)
+
+hist(bowhead_LT$distance, breaks = breaks_seq, 
+     xlab = "Distance (Km)", 
+     main = "Histogram of Whale Sighting Distances", 
+     col = adjustcolor("steelblue", 0.1), 
+     las = 1)
+
+# Save the plot as a PNG file named "rawhistogram.png"
+png(filename = "png/rawhistogram.png", width = 1300, height = 900, units = "px", res = 300)
+hist(bowhead_LT$distance, breaks = breaks_seq, 
+     xlab = "Distance (Km)", 
+     main = "Histogram of Whale Sighting Distances", 
+     col = adjustcolor("steelblue", 0.1), 
+     las = 1)
+dev.off()
+
+```
+
+```{r}
+# Create a binned histogram with the probability of sightings
+max_distance <- max(bowhead_LT$distance, na.rm = TRUE)
+breaks_seq <- seq(0, max_distance + 0.1, by = 0.2)
+
+# Calculate the histogram
+hist_data <- hist(bowhead_LT$distance, breaks = breaks_seq, plot = FALSE)
+
+# Calculate the proportions
+proportions <- hist_data$counts / sum(hist_data$counts)
+
+# Create the bar plot
+barplot(proportions, names.arg = hist_data$mids, 
+        xlab = "Distance (Km)", 
+        ylab = "Proportion", 
+        main = "Histogram of Whale Sighting Distances", 
+        col = adjustcolor("steelblue", 0.1), 
+        las = 1)
+
+# Save the plot as a PNG file named "binned_histogram.png"
+png(filename = "png/binned_histogram.png", width = 1300, height = 900, units = "px", res = 300)
+barplot(proportions, names.arg = hist_data$mids, 
+        xlab = "Distance (Km)", 
+        ylab = "Proportion", 
+        main = "Histogram of Whale Sighting Distances", 
+        col = adjustcolor("steelblue", 0.1), 
+        las = 1)
+dev.off()
+
+
+```
+
+**Possible Covariates:**
+
+the book says look at the visualisation and in the paper we can say as we can see there seems to be an effect
+
+```{r}
+# Aggregate data to get the number of sightings per group size
+sightings_per_size <- aggregate(bowhead_LT$distance, 
+                                by = list(bowhead_LT$size), 
+                                FUN = length)
+
+# Rename columns for clarity
+colnames(sightings_per_size) <- c("Group_Size", "Number_of_Sightings")
+
+# Fit a linear model
+model <- lm(Number_of_Sightings ~ Group_Size, data = sightings_per_size)
+
+# Create the scatter plot with 'number of sightings' on the x-axis and 'group size' on the y-axis
+plot(sightings_per_size$Group_Size, sightings_per_size$Number_of_Sightings, 
+     main = "Number of Sightings per Group Size", 
+     xlab = "Group Size", 
+     ylab = "Number of Sightings", 
+     pch = 19, col = "lightblue")
+
+# Add a regression line
+abline(model, col = "steelblue")
+
+# Save the plot as a PNG file named "scatter_plot_regression.png" in the "png" folder
+png(filename = "png/scatter_plot_number_of_sightings_per_group_size.png", width = 1300, height = 900, units = "px", res = 300)
+plot(sightings_per_size$Group_Size, sightings_per_size$Number_of_Sightings, 
+     main = "Number of Sightings per Group Size", 
+     xlab = "Group Size", 
+     ylab = "Number of Sightings", 
+     pch = 19, col = "lightblue")
+abline(model, col = "steelblue")
+dev.off()
+
+
+
+```
+
+```{r}
+# Count occurrences of each region label
+region_counts <- table(bowhead_LT$Region.Label)
+
+# Convert the counts to a data frame
+region_counts_df <- as.data.frame(region_counts)
+names(region_counts_df) <- c("Region.Label", "Number_of_Sightings")
+
+# Plotting with ggplot2
+library(ggplot2)
+
+# Create the bar plot
+ggplot(region_counts_df, aes(x = Region.Label, y = Number_of_Sightings)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  labs(x = "Stratum", 
+       y = "Number of Sightings", 
+       title = "Number of Sightings per Stratum") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Save the plot as a PNG file named "bar_plot_sightings_per_stratum.png"
+ggsave(filename = "png/bar_plot_sightings_per_stratum.png", plot = last_plot(), width = 10, height = 6)
+
+
+```
+
+the main takeaways from the exploratory analysis are the following:
+
+-   There is a clear imbalance, the mentions issues with the data and there could be mention of this but this point has to be explored as it really is the main issue here
+
+-   Secondly the hist shows that we need to truncate further as there is some heterogeneity in the distances sampled
+
+**Grouping:**
+
+Grouping is a strong consideration in distance sampling, following the work done on Montrave case study, we decided not too group as the distances were not rounded (Find the case study, easy to find, analysis done by St-andrews). There rounding to the nearest meter was based on the unobserved birds that were heard and not seen and hard to pinpoint. Although y must note that the spead of arial urveys als makes it challenging to accurately count.
+
+ST buckland in his book suggests that binning should be done when the rounding is extrem or when the rounding causes a spike at zero distance which would cause the model to overfit to the spike and overlook the shoulder.
+
+Looking at our data we can't justify fitting our model to grouped data however, following the Montrave Songbird case study, we will use cutpoints for plotting histogramms and for calculating goodness of fit test statistics.
+
+**Truncation:**
+
+As seen from the histogramm our data does not feature a long tail and so we can assume that right truncation will not effect the robustness of our anaylis and is therefore not neede. Left truncation, especially in the context of arial servey is a musch more involved topic, the data by .... was already trunccated by 100 to account for whales that couln't be counted due to the limited visibility on the y axis however considerations should be had on wether further trunccation is needed especially in light of the observed data. THE book suggests that left truncation can be necessary in the beginning in the presence of unusually large observations which is not the case here however, truncation might still be needed and . The book says that truncation may be needed if there is a need for more adjustments terms to improove model fit. However in this case we can clearly see that model fit is not improoved but adding one or two adjustement terms thus we conclude that there is no extra ned for truncation and the the truncation done by ... is acceptable. Furthermore this allows us to adress the balance between truncating to improove model fit and conserving data points, in the original paper, 2 observations were lost due to the truncation and 5 were lost as they were not concerved by other observers reuslting in a 10.77 percent of the data being taken away. We conclude that this is acceptable.
+
+# **Fitting**
+
+### I) fitting Key functions alone
+
+```{r}
+conversion <- convert_units("kilometre", "kilometre","square kilometre")
+region <- unique(bowhead_LT[,c("Region.Label", "Area")])
+sample <- unique(bowhead_LT[,c("Region.Label", "Sample.Label", "Effort")])
+observation <- unique(bowhead_LT[,c("object", "Region.Label", "Sample.Label")])
+```
+
+```{r}
+print('model with Half normal Key function, alone')
+hn.noadj.trunc0 <- ds(data = bowhead_LT, key = "hn", adjustment = NULL, convert_units = conversion)
+
+print('model with Hazard rate Key function, alone')
+hr.noadj.trunc0 <- ds(data = bowhead_LT, key = "hr", adjustment = NULL, convert_units = conversion)
+
+print('model with Uniform Key function, with no adjustment')
+unif.noadj.trunc0 <- ds(data = bowhead_LT, key = "unif", adjustment = NULL, convert_units = conversion)
+
+# We fit the Uniform with the cosine adj because the book did it and look at that better preformance (interesting)
+print('model with Uniform Key function, with cosine adjustment')
+unif.cos.trunc0 <- ds(data = bowhead_LT, key = "unif", adjustment = 'cos', convert_units = conversion)
+```
+
+```{r}
+par(mfrow = c(1,2))
+
+plot(hn.noadj.trunc0, which=2, pl.col = adjustcolor("lightblue",0.5),border=NULL, lwd = 2, ylab = "Detection probability (g(x))", xlab = "Distance", las=1, main = "Half-normal model Alone")
+
+plot(hr.noadj.trunc0, which=2, pl.col = adjustcolor("lightblue",0.5),border=NULL, lwd = 2, ylab = "Detection probability (g(x))", xlab = "Distance", las=1, main = "Hazard rate model ALone")
+```
+
+```{r}
+par(mfrow = c(1,2))
+plot(unif.noadj.trunc0, which=2, pl.col = adjustcolor("lightblue",0.5),border=NULL, lwd = 2, ylab = "Detection probability (g(x))", xlab = "Distance", las=1, main = "Uniform model ALone")
+
+plot(unif.cos.trunc0, which=2, pl.col = adjustcolor("lightblue",0.5),border=NULL, lwd = 2, ylab = "Detection probability (g(x))", xlab = "Distance", las=1, main = "Uniform, cos adjustment")
+```
+
+**Image download**
+
+```{r}
+# Save the plots as PNG files
+png("png/plots-hr0adj-hn0adj.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hn.noadj.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal model")
+plot(hr.noadj.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard rate model")
+dev.off()
+
+# Save the plots as PNG files
+png("png/plots-unifcos-unif0adj.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(unif.cos.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Uniform, cos adjustment")
+plot(unif.noadj.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Uniform")
+dev.off()
+
+```
+
+From this preliminary analysis we can see the uniform function is not appropriate as there is a clear lack of shoulder in the plot and that there is negligeable difference bettern the Hazard rate and Half normal functions. As a consequence we will continue looking at the hazard rate and halph normal in turn.
+
+### II) fitting Half Normal and Hazard rate with adjustments
+
+A forwards stepping procedure may be adopted to select adjustment terms; this is computationally more efficient than evaluating AIC for every possible combination of adjustment terms, and in most cases, leads to the same choice of model.
+
+```{r}
+# Half Normal
+print('model with Half normal Key function, and Cosine adjustment')
+hn.cos.trunc0<- ds(data = bowhead_LT, key = "hn", adjustment = "cos", convert_units = conversion)
+
+print('model with Half normal Key function, and Hermite polynomial adjustment')
+hn.herm.trunc0<- ds(data = bowhead_LT, key = "hn", adjustment = "herm", convert_units = conversion)
+
+print('model with Half normal Key function, and polynomial adjustment')
+hn.poly.trunc0<- ds(data = bowhead_LT, key = "hn", adjustment = "poly", convert_units = conversion)
+
+# Hazard Rate
+print('model with Hazard rate Key function, and Cosine adjustment')
+hr.cos.trunc0<- ds(data = bowhead_LT, key = "hr", adjustment = "cos", convert_units = conversion)
+
+print('model with Hazard rate Key function, and Hermite polynomial adjustment')
+hr.herm.trunc0<- ds(data = bowhead_LT, key = "hr", adjustment = "herm", convert_units = conversion)
+
+print('model with Hazard rate Key function, and polynomial adjustment')
+hr.poly.trunc0<- ds(data = bowhead_LT, key = "hr", adjustment = "poly", convert_units = conversion)
+```
+
+We can see that the adjustment terms offer no improvement over the base Half normal and Harzard rate functions. and that the plots for hazard rate alone and Halph normal by itself have the following desirable prperties.
+
+-   Shoulder
+
+-   Non-increasing.
+
+Burnham and Anderson (2002) suggested that models with a ΔAIC value of around two or less should be deemed to be well supported by the data
+
+```{r}
+par(mfrow = c(1,2))
+# Plot for Half-Normal model with Cosine adjustment
+plot(hn.cos.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-Normal model with Cosine Adjustment")
+
+# Plot for Half-Normal model with Hermite polynomial adjustment
+plot(hn.herm.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-Normal model with Hermite Polynomial Adjustment")
+```
+
+```{r}
+# Set up the layout for the plots
+par(mfrow = c(1, 2))
+
+# Plot for Half-Normal model with Polynomial adjustment
+plot(hn.poly.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-Normal model with Polynomial Adjustment")
+
+# Plot for Hazard Rate model with Cosine adjustment
+plot(hr.cos.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate model with Cosine Adjustment")
+```
+
+```{r}
+# Set up the layout for the plots
+par(mfrow = c(1, 2))
+
+# Plot for Hazard Rate model with Hermite Polynomial adjustment
+plot(hr.herm.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate model with cosine Adjustment")
+
+# Plot for Hazard Rate model with Polynomial adjustment
+plot(hr.poly.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate model with Polynomial Adjustment")
+```
+
+**Image Download**
+
+```{r}
+# Save the plots as PNG files
+png("png/plots-hnherm-hncos.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hn.herm.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal with Hermite Polynomial ajustment")
+plot(hn.cos.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal with Cosine adjustment")
+dev.off()
+
+# Save the plots as PNG files
+png("png/plots-hnploy-hrcos.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hn.poly.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal with polynomial adjustment")
+plot(hr.cos.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard rate with cosine adjustment")
+dev.off()
+
+# Save the plots as PNG files
+png("png/plots-hrpoly-hrherm", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hr.poly.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard rate with polynomial adjustment")
+plot(hr.herm.trunc0, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard rate with hermite polynomial adjustment")
+dev.off()
+```
+
+### III) Covariate Models
+
+We choose the models that fit best ie:
+
+-   model with Uniform Key function, with cosine adjustment
+
+    -   Can't use uniform key with covariates. so we keep it as is
+
+-   model with Hazard rate Key function, alone
+
+-   model with Half-normal Key function, alone
+
+```{r}
+print('model with Hazard rate Key function, with cov size')
+hr.noadj.trunc0.cov.size <- ds(data = bowhead_LT, key = "hr", adjustment = NULL,convert_units = conversion, formula = ~size)
+
+print('model with Hazard rate Key function, with cov size + bf')
+hr.noadj.trunc0.cov.size.bf <- ds(data = bowhead_LT, key = "hr", adjustment = NULL,convert_units = conversion, formula = ~size + as.factor(bf))
+
+print('model with Hazard rate Key function,  with cov size + bf + region')
+hr.noadj.trunc0.cov.size.bf.region <- ds(data = bowhead_LT, key = "hr", adjustment = NULL,convert_units = conversion, formula = ~size + as.factor(Region.Label) + as.factor(bf))
+```
+
+```{r}
+print('model with Half-normal Key function, with cov size')
+hn.noadj.trunc0.cov.size <- ds(data = bowhead_LT, key = "hn", adjustment = NULL,convert_units = conversion, formula = ~size)
+
+print('model with Half-normal Key function, with cov size + bf')
+hn.noadj.trunc0.cov.size.bf <- ds(data = bowhead_LT, key = "hn", adjustment = NULL,convert_units = conversion, formula = ~size + as.factor(bf))
+
+print('model with Half-normal Key function, with cov size + bf + region')
+hn.noadj.trunc0.cov.size.bf.region <- ds(data = bowhead_LT, key = "hn", adjustment = NULL,convert_units = conversion, formula = ~size + as.factor(Region.Label) + as.factor(bf))
+```
+
+```{r}
+# Set up the layout for the plots
+par(mfrow = c(1, 2))
+
+# Plot for Hazard Rate model with Hermite Polynomial adjustment
+plot(hr.noadj.trunc0.cov.size, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate cov size")
+
+# Plot for Hazard Rate model with Polynomial adjustment
+plot(hr.noadj.trunc0.cov.size.bf, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate cov size + bf ")
+```
+
+```{r}
+# Set up the layout for the plots
+par(mfrow = c(1, 2))
+
+# Plot for Hazard Rate model with Hermite Polynomial adjustment
+plot(hr.noadj.trunc0.cov.size.bf.region, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate with cov size + bf + region")
+
+# Plot for Hazard Rate model with Polynomial adjustment
+plot(hn.noadj.trunc0.cov.size, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size")
+```
+
+```{r}
+# Set up the layout for the plots
+par(mfrow = c(1, 2))
+
+# Plot for Hazard Rate model with Hermite Polynomial adjustment
+plot(hn.noadj.trunc0.cov.size.bf, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size + bf")
+
+# Plot for Hazard Rate model with Polynomial adjustment
+plot(hn.noadj.trunc0.cov.size.bf.region, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size + bf + region")
+```
+
+**Download**
+
+```{r}
+# Save the plots as PNG files
+png("png/plots-hr0adjcovsize-hr0adfcovsizebf.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hr.noadj.trunc0.cov.size, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate cov size")
+plot(hr.noadj.trunc0.cov.size.bf, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate cov size + bf")
+dev.off()
+
+# Save the plots as PNG files
+png("png/plots-hr0adjcovsizebfregion-hn0adjcovsize.png", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hr.noadj.trunc0.cov.size.bf.region, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Hazard Rate cov size + bf + region")
+plot(hn.noadj.trunc0.cov.size, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size")
+dev.off()
+
+# Save the plots as PNG files
+png("png/plots-hn0adjcovsizebf-hn0adjcovsizebfregion", width = 800, height = 400) # Adjust width and height as needed
+par(mfrow = c(1, 2))
+plot(hn.noadj.trunc0.cov.size.bf, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size + bf")
+plot(hn.noadj.trunc0.cov.size.bf.region, which = 2, pl.col = adjustcolor("lightblue", 0.5), border = NULL, lwd = 2, 
+     ylab = "Detection probability (g(x))", xlab = "Distance", las = 1, 
+     main = "Half-normal cov size + bf + region")
+dev.off()
+```
+
+### IV) Truncation Sensitivity analysis
+
+```{r}
+print('model with Half normal Key function, with truncation: 0.1')
+hn.noadj.trunc0.1<- ds(data = bowhead_LT, key = "hn", adjustment = NULL,convert_units = conversion, truncation = 0.1)
+
+print('model with Half normal Key function, with truncation: 0.15')
+hn.noadj.trunc0.15<- ds(data = bowhead_LT, key = "hn", adjustment = NULL,convert_units = conversion, truncation = 0.15)
+
+print('model with Hazard rate Key function, with truncation: 0.1')
+hr.noadj.trunc0.1<- ds(data = bowhead_LT, key = "hr", adjustment = NULL,convert_units = conversion, truncation = 0.1)
+
+print('model with Hazard rate Key function, with truncation: 0.15')
+hr.noadj.trunc0.15<- ds(data = bowhead_LT, key = "hr", adjustment = NULL,convert_units = conversion, truncation = 0.15)
+
+print('model with Uniform Key function, with cosine adjustment, with truncation: 0.1')
+unif.cos.trunc0.1<- ds(data = bowhead_LT, key = "unif", adjustment = 'cos',convert_units = conversion, truncation = 0.1)
+
+print('model with Uniform Key function, with cosine adjustment, with truncation: 0.15')
+unif.cos.trunc0.15<- ds(data = bowhead_LT, key = "unif", adjustment = 'cos',convert_units = conversion, truncation = 0.15)
+```
+
+```{r}
+# Summary for the truncation sensitivity analysis
+summarize_ds_models(
+  hn.noadj.trunc0.1,
+  hn.noadj.trunc0.15,
+  hr.noadj.trunc0.1,
+  hr.noadj.trunc0.15,
+  unif.cos.trunc0.1,
+  unif.cos.trunc0.15)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0.1)
+gof_ds(hn.noadj.trunc0.1, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0.15)
+gof_ds(hn.noadj.trunc0.15, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0.1)
+gof_ds(hr.noadj.trunc0.1, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0.15)
+gof_ds(hr.noadj.trunc0.15, ks= TRUE)
+```
+
+```{r}
+gof_ds(unif.cos.trunc0.1)
+gof_ds(unif.cos.trunc0.1, ks= TRUE)
+```
+
+```{r}
+gof_ds(unif.cos.trunc0.15)
+gof_ds(unif.cos.trunc0.15, ks= TRUE)
+```
+
+### V) Goodness of fit
+
+```{r}
+summarize_ds_models(
+  unif.cos.trunc0,
+  hr.noadj.trunc0,
+  hn.noadj.trunc0,
+  hn.cos.trunc0,
+  hn.herm.trunc0,
+  hn.poly.trunc0,
+  hr.cos.trunc0,
+  hr.herm.trunc0,
+  hr.poly.trunc0,
+  hr.noadj.trunc0.cov.size,
+  hr.noadj.trunc0.cov.size.bf,
+  hr.noadj.trunc0.cov.size.bf.region,
+  hn.noadj.trunc0.cov.size,
+  hn.noadj.trunc0.cov.size.bf,
+  hn.noadj.trunc0.cov.size.bf.region,)
+```
+
+```{r}
+gof_ds(unif.cos.trunc0)
+gof_ds(unif.cos.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0)
+gof_ds(hr.noadj.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0)
+gof_ds(hn.noadj.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.cos.trunc0)
+gof_ds(hn.cos.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.herm.trunc0)
+gof_ds(hn.herm.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.poly.trunc0)
+gof_ds(hn.poly.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.cos.trunc0)
+gof_ds(hr.cos.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.herm.trunc0)
+gof_ds(hr.herm.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.poly.trunc0)
+gof_ds(hr.poly.trunc0, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0.cov.size)
+gof_ds(hr.noadj.trunc0.cov.size, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0.cov.size.bf)
+gof_ds(hr.noadj.trunc0.cov.size.bf, ks= TRUE)
+```
+
+```{r}
+gof_ds(hr.noadj.trunc0.cov.size.bf.region)
+gof_ds(hr.noadj.trunc0.cov.size.bf.region, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0.cov.size)
+gof_ds(hn.noadj.trunc0.cov.size, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0.cov.size.bf)
+gof_ds(hn.noadj.trunc0.cov.size.bf, ks= TRUE)
+```
+
+```{r}
+gof_ds(hn.noadj.trunc0.cov.size.bf.region)
+gof_ds(hn.noadj.trunc0.cov.size.bf.region, ks= TRUE)
+```
+
+# Estimate Abundance
+
+Now when we get the numbers we should choose a couple models and run this function with it in order to see what are estimates are. This is turn will enable us to to comment on them with the Analysis of the results in the next section
+
+```{r}
+minke_abd <- dht(model = m1$ddf, 
+                 region.table = region_table,
+                 sample.table = sample_table,
+                 obs.table = observation_table)
+
+minke_abd
+```
+
+# Analysis of the results
+
+This is the sort of analysis we need
+
+*As we expect detectability to be affected by the covariates, the next step is to include these in the modelling of the detection function. We therefore consider both the hazard-rate and the half-normal model with various combinations of covariates. (We do not consider models that include both the continuous covariate mas and the factor hour as the two variables are highly correlated.) Results appear in Table 5.7. None of the models with the hazard-rate key require adjustment terms, while the half-normal models always require cosine terms. The covariate representing observer seems to be very important in explaining detectability; all models that include it have a considerably lower AIC than any of the CDS models or any of the other MCDS models without this covariate. Overall, detectability, as reflected by the estimates of the effective detection radius, is relatively constant across models, suggesting that the analysis is robust to model choice*
+
+-   Remember that we are underestimating the whales because some of them will be under water
